@@ -1,20 +1,20 @@
 import os
 
 # WSL File Paths
-RAW_TRAIN_DIR = r'\\wsl$\Ubuntu-22.04\home\vistaar\geotiffs\tier1'
-RAW_TEST_DIR = r'\\wsl$\Ubuntu-22.04\home\vistaar\geotiffs\test'
+RAW_TRAIN_DIR = '/home/vistaar/geotiffs/tier1'
+RAW_TEST_DIR = '/home/vistaar/geotiffs/test'
 
 # Separate Processed Data Folders
-PROCESSED_TRAIN_DIR = './data/processed/train'
-PROCESSED_TEST_DIR = './data/processed/test'
-CHECKPOINT_DIR = './checkpoints'
+PROCESSED_TRAIN_DIR = '/home/vistaar/geotiffs/processed/train'
+PROCESSED_TEST_DIR = '/home/vistaar/geotiffs/processed/test'
+CHECKPOINT_DIR = '/home/vistaar/geotiffs/checkpoints'
 
 os.makedirs(PROCESSED_TRAIN_DIR, exist_ok=True)
 os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters tailored for 8GB VRAM
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 EPOCHS = 20
 LEARNING_RATE = 1e-4
 TILE_SIZE = 256

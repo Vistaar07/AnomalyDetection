@@ -1,5 +1,5 @@
 import torch
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from model import GLCrossNet
 from loss import BoundaryAwareOrdinalFocalLoss
 import config
@@ -45,7 +45,7 @@ def run_memory_test():
     optimizer.zero_grad()
 
     # 3. Forward Pass with AMP
-    with autocast():
+    with autocast('cuda'):
         mask_out, edge_out = model(pre, post, g_pre, g_post)
         loss = criterion(mask_out, mask, edge_out, edge)
 

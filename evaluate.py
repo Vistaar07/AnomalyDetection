@@ -6,7 +6,7 @@ from tqdm import tqdm
 import config
 from dataset import xBDDataset
 from model import GLCrossNet
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
 def calculate_xview2_metrics(confusion_matrix):
     tp_loc = np.sum(confusion_matrix[1:, 1:])
@@ -52,7 +52,7 @@ def evaluate():
             g_pre, g_post = batch['g_pre'].to(device), batch['g_post'].to(device)
             mask = batch['mask'].cpu().numpy()
 
-            with autocast():
+            with autocast('cuda'):
                 mask_out, _ = model(pre, post, g_pre, g_post)
 
             preds = torch.argmax(mask_out, dim=1).cpu().numpy()

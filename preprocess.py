@@ -1,10 +1,11 @@
-import os
 import cv2
 import json
 import numpy as np
 from tqdm import tqdm
 from shapely.wkt import loads
 import config
+import os
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
 DAMAGE_DICT = {
     "un-classified": 1, "no-damage": 1,
@@ -43,11 +44,11 @@ def process_directory(raw_dir, processed_dir, is_train=True):
         print(f"Skipping... Directory not found: {images_dir}")
         return
 
-    files = [f for f in os.listdir(images_dir) if '_post' in f]
+    files = [f for f in os.listdir(images_dir) if '_post_disaster' in f]
 
     print(f"Preprocessing data from {raw_dir} -> {processed_dir}")
     for post_img_name in tqdm(files):
-        pre_img_name = post_img_name.replace('_post', '_pre')
+        pre_img_name = post_img_name.replace('_post_disaster', '_pre_disaster')
 
         pre_img = cv2.imread(os.path.join(images_dir, pre_img_name))
         post_img = cv2.imread(os.path.join(images_dir, post_img_name))

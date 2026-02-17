@@ -7,7 +7,7 @@ from dataset import xBDDataset
 from model import GLCrossNet
 from loss import BoundaryAwareOrdinalFocalLoss
 import numpy as np
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 def rand_bbox(size, lam):
     W, H = size[2], size[3]
@@ -29,7 +29,7 @@ def train():
     model = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
     criterion = BoundaryAwareOrdinalFocalLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
-    scaler = GradScaler()
+    scaler = GradScaler('cuda')
 
     start_epoch = 0
     best_loss = float('inf')
@@ -68,7 +68,7 @@ def train():
 
             optimizer.zero_grad()
 
-            with autocast():
+            with autocast('cuda'):
                 mask_out, edge_out = model(pre, post, g_pre, g_post)
                 loss = criterion(mask_out, mask, edge_out, edge)
 

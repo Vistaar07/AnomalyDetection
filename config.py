@@ -1,7 +1,8 @@
 import os
 
 # WSL File Paths
-RAW_DATA_DIR = './data/raw'
+# config.py
+RAW_DATA_DIR = r'\\wsl$\Ubuntu-22.04\home\vistaar\geotiffs\tier1'
 PROCESSED_DATA_DIR = './data/processed'
 CHECKPOINT_DIR = './checkpoints'
 

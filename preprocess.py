@@ -43,8 +43,8 @@ def process_dataset():
         
         pre_img = cv2.imread(os.path.join(images_dir, pre_img_name))
         post_img = cv2.imread(os.path.join(images_dir, post_img_name))
-        
-        post_json = os.path.join(labels_dir, post_img_name.replace('.png', '.json'))
+
+        post_json = os.path.join(labels_dir, post_img_name.replace('.tif', '.json'))
         mask, edge_mask = create_masks(post_json)
         
         # Save Global Downsampled Views

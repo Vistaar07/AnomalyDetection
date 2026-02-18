@@ -1,5 +1,6 @@
 import cv2
 import json
+import rasterio
 import numpy as np
 from tqdm import tqdm
 from shapely.wkt import loads
@@ -11,6 +12,20 @@ DAMAGE_DICT = {
     "un-classified": 1, "no-damage": 1,
     "minor-damage": 2, "major-damage": 3, "destroyed": 4
 }
+
+def read_tif_rgb(path):
+    with rasterio.open(path) as src:
+        img = src.read([1, 2, 3])  # read RGB bands
+        img = np.transpose(img, (1, 2, 0))  # CHW → HWC
+
+        # normalize to 0–255
+        img = img.astype(np.float32)
+        img -= img.min()
+        if img.max() > 0:
+            img /= img.max()
+        img *= 255.0
+
+        return img.astype(np.uint8)
 
 def create_masks(json_path, img_shape=(1024, 1024)):
     mask = np.zeros(img_shape, dtype=np.uint8)
@@ -26,7 +41,18 @@ def create_masks(json_path, img_shape=(1024, 1024)):
     for feature in data['features']['xy']:
         poly_wkt = feature['wkt']
         poly = loads(poly_wkt)
-        coords = np.array(poly.exterior.coords, dtype=np.int32)
+        coords = np.array(poly.exterior.coords)
+
+        # round properly (not truncate)
+        coords = np.round(coords).astype(np.int32)
+
+        # clip to image bounds (CRITICAL)
+        coords[:, 0] = np.clip(coords[:, 0], 0, img_shape[1] - 1)
+        coords[:, 1] = np.clip(coords[:, 1], 0, img_shape[0] - 1)
+
+        # skip degenerate polygons
+        if coords.shape[0] < 3:
+            continue
 
         damage = feature['properties'].get('subtype', 'no-damage')
         val = DAMAGE_DICT.get(damage, 1)
@@ -50,8 +76,9 @@ def process_directory(raw_dir, processed_dir, is_train=True):
     for post_img_name in tqdm(files):
         pre_img_name = post_img_name.replace('_post_disaster', '_pre_disaster')
 
-        pre_img = cv2.imread(os.path.join(images_dir, pre_img_name))
-        post_img = cv2.imread(os.path.join(images_dir, post_img_name))
+        pre_img = read_tif_rgb(os.path.join(images_dir, pre_img_name))
+        post_img = read_tif_rgb(os.path.join(images_dir, post_img_name))
+
 
         post_json = os.path.join(labels_dir, post_img_name.replace('.tif', '.json'))
         mask, edge_mask = create_masks(post_json)

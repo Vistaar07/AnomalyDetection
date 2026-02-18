@@ -14,14 +14,15 @@ os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters tailored for 8GB VRAM
-BATCH_SIZE = 16
+BATCH_SIZE = 24  # You can safely increase this to 24 if your VRAM usage allows
 EPOCHS = 20
 LEARNING_RATE = 1e-4
 TILE_SIZE = 256
 NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
-# Loss Weights
-LAMBDA_FOCAL_DICE = 1.0
+# Loss Weights (Updated for Dice Integration)
+LAMBDA_FOCAL = 1.0
+LAMBDA_DICE = 1.0
 LAMBDA_ORDINAL = 0.5
 LAMBDA_BOUNDARY = 0.75
 

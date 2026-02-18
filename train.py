@@ -71,11 +71,11 @@ def train():
         start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint.get('best_loss', float('inf'))
 
-    for epoch in range(start_epoch, config.EPOCHS):
+    WARMUP_EPOCHS = 4
 
-        # --- LINEAR WARMUP (First 2 Epochs) ---
-        if epoch < 2 and start_epoch == 0:
-            warmup_lr = 1e-5 + (config.LEARNING_RATE - 1e-5) * (epoch / 2)
+    for epoch in range(start_epoch, config.EPOCHS):
+        if epoch < WARMUP_EPOCHS:
+            warmup_lr = config.LEARNING_RATE * (epoch + 1) / WARMUP_EPOCHS
             for param_group in optimizer.param_groups:
                 param_group['lr'] = warmup_lr
 
@@ -135,7 +135,7 @@ def train():
         avg_val_loss = val_loss / valid_batches if valid_batches > 0 else float('inf')
 
         # Step the scheduler only after warmup is complete
-        if epoch >= 2:
+        if epoch >= WARMUP_EPOCHS:
             scheduler.step(avg_val_loss)
 
         current_lr = optimizer.param_groups[0]['lr']
@@ -159,7 +159,7 @@ def train():
             best_val_loss = avg_val_loss
             # Update to use the new unique best_model_path
             torch.save(model.state_dict(), best_model_path)
-            print("⭐ New Best Model Saved!")
+            print("New Best Model Saved!")
 
         torch.save({
             'epoch': epoch,

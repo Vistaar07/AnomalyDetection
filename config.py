@@ -15,16 +15,19 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters tailored for 8GB VRAM
 BATCH_SIZE = 24  # You can safely increase this to 24 if your VRAM usage allows
-EPOCHS = 20
+EPOCHS = 45
 LEARNING_RATE = 1e-4
 TILE_SIZE = 256
 NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
+# [Background, No-Damage, Minor, Major, Destroyed]
+CLASS_WEIGHTS = [1.0, 1.5, 3.5, 2.5, 2.0]
+
 # Loss Weights (Updated for Dice Integration)
 LAMBDA_FOCAL = 1.0
 LAMBDA_DICE = 1.0
-LAMBDA_ORDINAL = 0.5
+LAMBDA_ORDINAL = 0.8
 LAMBDA_BOUNDARY = 0.75
 
 # CutMix Probability
-CUTMIX_PROB = 0.5
+CUTMIX_PROB = 0.3

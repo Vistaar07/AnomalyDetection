@@ -32,7 +32,7 @@ def train():
     val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
     model = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
-    criterion = BoundaryAwareOrdinalFocalLoss()
+    criterion = BoundaryAwareOrdinalFocalLoss().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)

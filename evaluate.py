@@ -40,7 +40,7 @@ def evaluate():
     loader = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
 
     model = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
-    model.load_state_dict(torch.load(os.path.join(config.CHECKPOINT_DIR, 'best_model_20260218_135334.pth'), map_location=device))
+    model.load_state_dict(torch.load(os.path.join(config.CHECKPOINT_DIR, 'best_model_20260218_213512.pth'), map_location=device))
     model.eval()
 
     global_cm = np.zeros((config.NUM_CLASSES, config.NUM_CLASSES), dtype=np.int64)

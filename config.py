@@ -14,8 +14,8 @@ os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters
-BATCH_SIZE = 24
-EPOCHS = 45
+BATCH_SIZE = 8
+EPOCHS = 50
 LEARNING_RATE = 2e-4
 TILE_SIZE = 512 # Changed from 256 to 512
 NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed

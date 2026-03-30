@@ -28,8 +28,25 @@ def train():
     train_dataset = xBDDataset(config.PROCESSED_TRAIN_DIR, is_train=True)
     val_dataset = xBDDataset(config.PROCESSED_TEST_DIR, is_train=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.BATCH_SIZE,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=2
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.BATCH_SIZE,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=False,
+        prefetch_factor=2
+    )
 
     model = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
     criterion = BoundaryAwareOrdinalFocalLoss().to(device)

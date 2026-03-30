@@ -1,33 +1,33 @@
 import os
 
-# WSL File Paths
-RAW_TRAIN_DIR = '/home/vistaar/geotiffs/tier1'
-RAW_TEST_DIR = '/home/vistaar/geotiffs/test'
+# File Paths
+RAW_TRAIN_DIR = "C:/geotiffs/tier1"
+RAW_TEST_DIR = "C:/geotiffs/test"
 
 # Separate Processed Data Folders
-PROCESSED_TRAIN_DIR = '/home/vistaar/geotiffs/processed/train'
-PROCESSED_TEST_DIR = '/home/vistaar/geotiffs/processed/test'
-CHECKPOINT_DIR = '/home/vistaar/geotiffs/checkpoints'
+PROCESSED_TRAIN_DIR = "C:/geotiffs/processed/train"
+PROCESSED_TEST_DIR = "C:/geotiffs/processed/test"
+CHECKPOINT_DIR = "C:/geotiffs/checkpoints"
 
 os.makedirs(PROCESSED_TRAIN_DIR, exist_ok=True)
 os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters tailored for 8GB VRAM
-BATCH_SIZE = 24  # You can safely increase this to 24 if your VRAM usage allows
+BATCH_SIZE = 24
 EPOCHS = 45
-LEARNING_RATE = 1e-4
-TILE_SIZE = 256
+LEARNING_RATE = 2e-4
+TILE_SIZE = 512 # Changed from 256 to 512
 NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
 # [Background, No-Damage, Minor, Major, Destroyed]
 CLASS_WEIGHTS = [1.0, 1.5, 3.5, 2.5, 2.0]
 
 # Loss Weights (Updated for Dice Integration)
-LAMBDA_FOCAL = 1.0
-LAMBDA_DICE = 1.0
-LAMBDA_ORDINAL = 0.8
+LAMBDA_FOCAL = 2.0
+LAMBDA_DICE = 0.5
+LAMBDA_ORDINAL = 1.2
 LAMBDA_BOUNDARY = 0.75
 
 # CutMix Probability
-CUTMIX_PROB = 0.3
+CUTMIX_PROB = 0.5

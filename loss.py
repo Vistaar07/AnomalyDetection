@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import config
 
 class BoundaryAwareOrdinalFocalLoss(nn.Module):
-    # Updated default gamma to 2.5.
     def __init__(self, gamma=2.5, label_smoothing=0.1):
         super().__init__()
         self.gamma = gamma
@@ -15,7 +14,8 @@ class BoundaryAwareOrdinalFocalLoss(nn.Module):
         self.register_buffer('class_weights', torch.tensor(config.CLASS_WEIGHTS, dtype=torch.float32))
 
     def dice_loss(self, pred, target):
-        smooth = 1e-6
+        # CHANGED: 1e-6 will underflow in FP16. 1.0 guarantees no division by zero.
+        smooth = 1.0
 
         pred = F.softmax(pred, dim=1)
         target_one_hot = F.one_hot(
@@ -27,20 +27,22 @@ class BoundaryAwareOrdinalFocalLoss(nn.Module):
 
         dice = (2. * intersection + smooth) / (union + smooth)
 
-        #proper reduction
         dice_per_class = dice.mean(dim=0)
-
         weights = self.class_weights / self.class_weights.sum()
 
         return 1 - (dice_per_class * weights).sum()
 
-    # FIX: Indented to be a method of the class
     def forward(self, pred_masks, true_masks, pred_edges, true_edges):
-        # 1. FOCAL LOSS (Now using CLASS_WEIGHTS inside cross_entropy)
+        # --- NEW: Force FP32 for numerical stability in the loss function ---
+        pred_masks = pred_masks.float()
+        pred_edges = pred_edges.float()
+        # -------------------------------------------------------------------
+
+        # 1. FOCAL LOSS
         ce_loss = F.cross_entropy(
             pred_masks,
             true_masks,
-            weight=self.class_weights,  # Applies the [1.0, 1.5, 3.5, 2.5, 2.0] balancing
+            weight=self.class_weights,
             reduction='none',
             label_smoothing=self.label_smoothing
         )

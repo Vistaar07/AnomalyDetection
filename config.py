@@ -14,20 +14,20 @@ os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters
-BATCH_SIZE = 8
-EPOCHS = 50
-LEARNING_RATE = 2e-4
+BATCH_SIZE = 10
+EPOCHS = 100
+LEARNING_RATE = 1e-4 # Reduced from 2e-4 for the B4 encoder
 TILE_SIZE = 512 # Changed from 256 to 512
 NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
 # [Background, No-Damage, Minor, Major, Destroyed]
-CLASS_WEIGHTS = [1.0, 1.5, 3.5, 2.5, 2.0]
+CLASS_WEIGHTS = [0.5, 1.0, 10.0, 3.0, 2.5]
 
-# Loss Weights (Updated for Dice Integration)
+# Loss Weights
 LAMBDA_FOCAL = 2.0
-LAMBDA_DICE = 0.5
-LAMBDA_ORDINAL = 1.2
+LAMBDA_DICE = 1.0
+LAMBDA_ORDINAL = 2.0
 LAMBDA_BOUNDARY = 0.75
 
 # CutMix Probability
-CUTMIX_PROB = 0.5
+CUTMIX_PROB = 0.0

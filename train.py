@@ -37,16 +37,16 @@ def train():
         train_dataset,
         batch_size=config.BATCH_SIZE,
         shuffle=True,
-        num_workers=4,
+        num_workers=2,
         pin_memory=True,
-        persistent_workers=True,
+        persistent_workers=False,
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=config.BATCH_SIZE,
         shuffle=False,
-        num_workers=4,
+        num_workers=2,
         pin_memory=True,
         persistent_workers=False,
     )
@@ -55,7 +55,7 @@ def train():
     criterion = BoundaryAwareOrdinalFocalLoss().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
     scaler = GradScaler('cuda')
 
     # Augmentations
@@ -146,7 +146,7 @@ def train():
 
             optimizer.zero_grad()
 
-            with autocast('cuda', dtype=torch.bfloat16):
+            with autocast('cuda'):
                 mask_out, edge_out = model(pre, post, g_pre, g_post)
                 loss = criterion(mask_out, mask, edge_out, edge)
 
@@ -175,7 +175,7 @@ def train():
                 g_pre, g_post = batch['g_pre'].to(device), batch['g_post'].to(device)
                 mask, edge = batch['mask'].to(device), batch['edge'].to(device)
 
-                with autocast('cuda', dtype=torch.bfloat16):
+                with autocast('cuda'):
                     mask_out, edge_out = model(pre, post, g_pre, g_post)
                     loss = criterion(mask_out, mask, edge_out, edge)
 
@@ -185,25 +185,27 @@ def train():
                 val_loss += loss.item()
                 valid_batches += 1
 
-                preds = torch.argmax(mask_out, dim=1).cpu().numpy()
-                true = mask.cpu().numpy()
+                preds = torch.argmax(mask_out, dim=1)
+                preds = torch.clamp(preds, 0, config.NUM_CLASSES - 1)
+                preds = preds.view(-1)
 
-                flattened_true = true.flatten()
-                flattened_preds = preds.flatten()
+                targets = mask.view(-1)
 
-                batch_cm = np.bincount(
-                    config.NUM_CLASSES * flattened_true + flattened_preds,
+                k = (targets >= 0) & (targets < config.NUM_CLASSES)
+
+                cm = torch.bincount(
+                    config.NUM_CLASSES * targets[k] + preds[k],
                     minlength=config.NUM_CLASSES ** 2
                 ).reshape(config.NUM_CLASSES, config.NUM_CLASSES)
 
-                global_cm += batch_cm
+                global_cm += cm.cpu().numpy()
 
         avg_val_loss = val_loss / valid_batches if valid_batches > 0 else float('inf')
 
         f1_loc, f1_dmg_classes, f1_dmg_harmonic, xview2_score = calculate_xview2_metrics(global_cm)
 
         if epoch >= WARMUP_EPOCHS:
-            scheduler.step(-xview2_score)
+            scheduler.step(xview2_score)
 
         current_lr = optimizer.param_groups[0]['lr']
 

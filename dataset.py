@@ -60,6 +60,9 @@ class xBDDataset(Dataset):
         mask = cv2.imread(os.path.join(self.data_dir, f"{base_name}_mask.png"), cv2.IMREAD_GRAYSCALE)
         edge = cv2.imread(os.path.join(self.data_dir, f"{base_name}_edge.png"), cv2.IMREAD_GRAYSCALE)
 
+        if pre is None or post is None:
+            raise ValueError(f"Image load failed: {base_name}")
+
         # GLOBAL CACHE
         if event_name not in self.global_cache:
             g_pre = cv2.imread(os.path.join(self.data_dir, f"{event_name}_global_pre.png"))[:, :, ::-1]

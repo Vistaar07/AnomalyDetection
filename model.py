@@ -31,10 +31,10 @@ class CrossTemporalAttention(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, skip_channels, out_channels):
         super().__init__()
-        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+        self.up = nn.ConvTranspose2d(in_channels, out_channels, 2, 2)
 
         self.conv = nn.Sequential(
-            nn.Conv2d(out_channels + skip_channels, out_channels, kernel_size=3, padding=1),
+            nn.Conv2d(out_channels + skip_channels, out_channels, 3, padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
@@ -49,28 +49,27 @@ class GLCrossNet(nn.Module):
     def __init__(self, num_classes=5):
         super().__init__()
 
-        # Encoder (ConvNeXt)
-        self.local_encoder = timm.create_model('convnext_base', pretrained=True, features_only=True)
-        self.global_encoder = timm.create_model('convnext_base', pretrained=True, features_only=True)
+        self.local_encoder = timm.create_model(
+            'convnext_tiny', pretrained=True, features_only=True
+        )
+        self.global_encoder = timm.create_model(
+            'convnext_tiny', pretrained=True, features_only=True
+        )
 
         ch = self.local_encoder.feature_info.channels()
 
-        # Bottleneck fusion
         self.fusion_conv = nn.Conv2d(ch[-1] * 2, ch[-1], 1)
         self.co_attention = CrossTemporalAttention(ch[-1])
 
-        # --- SKIP REDUCTION LAYERS ---
-        # concatenate pre + post (2x channels)
         self.skip1_reduce = nn.Conv2d(ch[-2] * 2, ch[-2], 1)
         self.skip2_reduce = nn.Conv2d(ch[-3] * 2, ch[-3], 1)
         self.skip3_reduce = nn.Conv2d(ch[-4] * 2, ch[-4], 1)
 
-        # Decoder
         self.dec1 = DecoderBlock(ch[-1], ch[-2], ch[-2])
         self.dec2 = DecoderBlock(ch[-2], ch[-3], ch[-3])
         self.dec3 = DecoderBlock(ch[-3], ch[-4], ch[-4])
 
-        self.final_up = nn.ConvTranspose2d(ch[-4], ch[-4], kernel_size=4, stride=4)
+        self.final_up = nn.ConvTranspose2d(ch[-4], ch[-4], 4, 4)
 
         self.mask_head = nn.Sequential(
             nn.Conv2d(ch[-4], ch[-4], 3, padding=1),
@@ -85,35 +84,29 @@ class GLCrossNet(nn.Module):
         )
 
     def forward(self, pre, post, g_pre, g_post):
-        # Local features
         l_pre_feats = self.local_encoder(pre)
         l_post_feats = self.local_encoder(post)
 
-        # Global features
         g_pre_feats = self.global_encoder(g_pre)[-1]
         g_post_feats = self.global_encoder(g_post)[-1]
 
-        # Global pooling
-        g_pre_pool = F.adaptive_avg_pool2d(g_pre_feats, 1).expand_as(l_pre_feats[-1])
-        g_post_pool = F.adaptive_avg_pool2d(g_post_feats, 1).expand_as(l_post_feats[-1])
+        # FIX: keep spatial info
+        g_pre_up = F.interpolate(
+            g_pre_feats, size=l_pre_feats[-1].shape[-2:], mode='bilinear', align_corners=False
+        )
+        g_post_up = F.interpolate(
+            g_post_feats, size=l_post_feats[-1].shape[-2:], mode='bilinear', align_corners=False
+        )
 
-        # Bottleneck fusion
-        pre_fused = self.fusion_conv(torch.cat([l_pre_feats[-1], g_pre_pool], dim=1))
-        post_fused = self.fusion_conv(torch.cat([l_post_feats[-1], g_post_pool], dim=1))
+        pre_fused = self.fusion_conv(torch.cat([l_pre_feats[-1], g_pre_up], dim=1))
+        post_fused = self.fusion_conv(torch.cat([l_post_feats[-1], g_post_up], dim=1))
 
         x = self.co_attention(pre_fused, post_fused)
 
-        # --- CONCAT SKIPS ---
-        skip1 = torch.cat([l_pre_feats[-2], l_post_feats[-2]], dim=1)
-        skip2 = torch.cat([l_pre_feats[-3], l_post_feats[-3]], dim=1)
-        skip3 = torch.cat([l_pre_feats[-4], l_post_feats[-4]], dim=1)
+        skip1 = self.skip1_reduce(torch.cat([l_pre_feats[-2], l_post_feats[-2]], dim=1))
+        skip2 = self.skip2_reduce(torch.cat([l_pre_feats[-3], l_post_feats[-3]], dim=1))
+        skip3 = self.skip3_reduce(torch.cat([l_pre_feats[-4], l_post_feats[-4]], dim=1))
 
-        # Reduce channels back
-        skip1 = self.skip1_reduce(skip1)
-        skip2 = self.skip2_reduce(skip2)
-        skip3 = self.skip3_reduce(skip3)
-
-        # Decode
         x = self.dec1(x, skip1)
         x = self.dec2(x, skip2)
         x = self.dec3(x, skip3)
@@ -121,10 +114,11 @@ class GLCrossNet(nn.Module):
         up = self.final_up(x)
 
         mask_out = self.mask_head(up)
-        edge_out = self.edge_head(up).squeeze(1)
 
-        # Resize safety
+        # FIX: keep shape [B,1,H,W]
+        edge_out = self.edge_head(up)
+
         mask_out = F.interpolate(mask_out, size=pre.shape[-2:], mode='bilinear', align_corners=False)
-        edge_out = F.interpolate(edge_out.unsqueeze(1), size=pre.shape[-2:], mode='bilinear', align_corners=False).squeeze(1)
+        edge_out = F.interpolate(edge_out, size=pre.shape[-2:], mode='bilinear', align_corners=False)
 
         return mask_out, edge_out

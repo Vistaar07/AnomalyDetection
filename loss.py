@@ -68,7 +68,7 @@ class BoundaryAwareOrdinalFocalLoss(nn.Module):
 
         # 4. BOUNDARY LOSS
         true_edges = true_edges.unsqueeze(1).float()
-        pred_edges = pred_edges.unsqueeze(1).float()
+        pred_edges = pred_edges.float()
         edge_loss = self.bce(pred_edges, true_edges)
 
         # TOTAL COMBINED LOSS

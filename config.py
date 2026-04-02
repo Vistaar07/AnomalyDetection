@@ -14,7 +14,7 @@ os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters
-BATCH_SIZE = 10
+BATCH_SIZE = 8
 EPOCHS = 100
 LEARNING_RATE = 1e-4 # Reduced from 2e-4 for the B4 encoder
 TILE_SIZE = 512 # Changed from 256 to 512

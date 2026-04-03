@@ -101,7 +101,7 @@ def train():
 
     WARMUP_EPOCHS = 4
     epochs_without_improvement = 0
-    EARLY_STOPPING_PATIENCE = 15
+    EARLY_STOPPING_PATIENCE = 20
 
     for epoch in range(start_epoch, config.EPOCHS):
 

@@ -98,7 +98,7 @@ def process_directory(raw_dir, processed_dir, is_train=True):
                 tile_mask = mask[y:y+stride, x:x+stride]
 
                 # Balance background ONLY for training data. Test data must keep all tiles.
-                if is_train and np.max(tile_mask) == 0 and np.random.rand() > 0.1:
+                if is_train and np.max(tile_mask) == 0 and np.random.rand() > 0.5:
                     continue
 
                 tile_pre = pre_img[y:y+stride, x:x+stride]

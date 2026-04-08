@@ -59,7 +59,11 @@ class GLCrossNet(nn.Module):
         ch = self.local_encoder.feature_info.channels()
 
         self.fusion_conv = nn.Conv2d(ch[-1] * 2, ch[-1], 1)
-        self.co_attention = CrossTemporalAttention(ch[-1])
+        self.co_attention = nn.MultiheadAttention(
+            embed_dim=ch[-1],
+            num_heads=4,
+            batch_first=True
+        )
 
         self.skip1_reduce = nn.Conv2d(ch[-2] * 2, ch[-2], 1)
         self.skip2_reduce = nn.Conv2d(ch[-3] * 2, ch[-3], 1)
@@ -101,7 +105,14 @@ class GLCrossNet(nn.Module):
         pre_fused = self.fusion_conv(torch.cat([l_pre_feats[-1], g_pre_up], dim=1))
         post_fused = self.fusion_conv(torch.cat([l_post_feats[-1], g_post_up], dim=1))
 
-        x = self.co_attention(pre_fused, post_fused)
+        B, C, H, W = pre_fused.shape
+
+        pre_flat = pre_fused.view(B, C, -1).permute(0, 2, 1)
+        post_flat = post_fused.view(B, C, -1).permute(0, 2, 1)
+
+        attn_out, _ = self.co_attention(post_flat, pre_flat, pre_flat)
+
+        x = attn_out.permute(0, 2, 1).view(B, C, H, W) + post_fused
 
         skip1 = self.skip1_reduce(torch.cat([l_pre_feats[-2], l_post_feats[-2]], dim=1))
         skip2 = self.skip2_reduce(torch.cat([l_pre_feats[-3], l_post_feats[-3]], dim=1))

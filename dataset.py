@@ -20,12 +20,12 @@ class xBDDataset(Dataset):
         ]))
 
         self.global_cache = {}
-        self.local_cache = {}
 
         self.transform = A.Compose([
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
-            A.Rotate(limit=15, p=0.3),
+            A.Rotate(limit=30, p=0.5),
+            A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.5),
             A.Normalize(mean=(0.485, 0.456, 0.406),
                         std=(0.229, 0.224, 0.225)),
             ToTensorV2()
@@ -36,6 +36,7 @@ class xBDDataset(Dataset):
             'edge': 'mask'
         })
 
+        # Validation: normalize only, no augmentation.
         self.val_transform = A.Compose([
             A.Normalize(mean=(0.485, 0.456, 0.406),
                         std=(0.229, 0.224, 0.225)),
@@ -55,7 +56,7 @@ class xBDDataset(Dataset):
 
         event_name = base_name.split('_')[0] + "_" + base_name.split('_')[1]
 
-        pre = cv2.imread(os.path.join(self.data_dir, f"{base_name}_pre.png"))[:, :, ::-1]
+        pre  = cv2.imread(os.path.join(self.data_dir, f"{base_name}_pre.png"))[:, :, ::-1]
         post = cv2.imread(os.path.join(self.data_dir, f"{base_name}_post.png"))[:, :, ::-1]
         mask = cv2.imread(os.path.join(self.data_dir, f"{base_name}_mask.png"), cv2.IMREAD_GRAYSCALE)
         edge = cv2.imread(os.path.join(self.data_dir, f"{base_name}_edge.png"), cv2.IMREAD_GRAYSCALE)
@@ -63,9 +64,9 @@ class xBDDataset(Dataset):
         if pre is None or post is None:
             raise ValueError(f"Image load failed: {base_name}")
 
-        # GLOBAL CACHE
+        # Cache global context images per event to avoid redundant disk reads.
         if event_name not in self.global_cache:
-            g_pre = cv2.imread(os.path.join(self.data_dir, f"{event_name}_global_pre.png"))[:, :, ::-1]
+            g_pre  = cv2.imread(os.path.join(self.data_dir, f"{event_name}_global_pre.png"))[:, :, ::-1]
             g_post = cv2.imread(os.path.join(self.data_dir, f"{event_name}_global_post.png"))[:, :, ::-1]
             self.global_cache[event_name] = (g_pre, g_post)
 
@@ -83,10 +84,10 @@ class xBDDataset(Dataset):
         )
 
         return {
-            'pre': aug['image'],
-            'post': aug['image2'],
-            'g_pre': aug['global_pre'],
+            'pre':    aug['image'],
+            'post':   aug['image2'],
+            'g_pre':  aug['global_pre'],
             'g_post': aug['global_post'],
-            'mask': aug['mask'].long(),
-            'edge': aug['edge'].float()
+            'mask':   aug['mask'].long(),
+            'edge':   aug['edge'].float()
         }

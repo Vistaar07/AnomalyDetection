@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import timm
 
-
 class CrossTemporalAttention(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -15,7 +14,11 @@ class CrossTemporalAttention(nn.Module):
     def forward(self, pre_feat, post_feat):
         B, C, H, W = pre_feat.size()
 
-        proj_query = self.query(post_feat).view(B, -1, H * W).permute(0, 2, 1)
+        # INJECTION: Isolate the structural changes
+        diff = torch.abs(pre_feat - post_feat)
+
+        # Query uses the difference tensor to focus attention
+        proj_query = self.query(diff).view(B, -1, H * W).permute(0, 2, 1)
         proj_key = self.key(pre_feat).view(B, -1, H * W)
 
         energy = torch.bmm(proj_query, proj_key)
@@ -49,21 +52,25 @@ class GLCrossNet(nn.Module):
     def __init__(self, num_classes=5):
         super().__init__()
 
+        # Gradient checkpointing must be enabled via set_grad_checkpointing()
+        # after model creation — passing it as a kwarg to create_model is not
+        # supported in all timm versions and causes a TypeError.
         self.local_encoder = timm.create_model(
             'convnext_tiny', pretrained=True, features_only=True
         )
         self.global_encoder = timm.create_model(
             'convnext_tiny', pretrained=True, features_only=True
         )
+        self.local_encoder.set_grad_checkpointing(enable=True)
+        self.global_encoder.set_grad_checkpointing(enable=True)
 
         ch = self.local_encoder.feature_info.channels()
 
+        self.norm = nn.LayerNorm(ch[-1])
         self.fusion_conv = nn.Conv2d(ch[-1] * 2, ch[-1], 1)
-        self.co_attention = nn.MultiheadAttention(
-            embed_dim=ch[-1],
-            num_heads=4,
-            batch_first=True
-        )
+
+        # CrossTemporalAttention replacing the generic MultiheadAttention
+        self.co_attention = CrossTemporalAttention(channels=ch[-1])
 
         self.skip1_reduce = nn.Conv2d(ch[-2] * 2, ch[-2], 1)
         self.skip2_reduce = nn.Conv2d(ch[-3] * 2, ch[-3], 1)
@@ -94,7 +101,6 @@ class GLCrossNet(nn.Module):
         g_pre_feats = self.global_encoder(g_pre)[-1]
         g_post_feats = self.global_encoder(g_post)[-1]
 
-        # FIX: keep spatial info
         g_pre_up = F.interpolate(
             g_pre_feats, size=l_pre_feats[-1].shape[-2:], mode='bilinear', align_corners=False
         )
@@ -105,14 +111,10 @@ class GLCrossNet(nn.Module):
         pre_fused = self.fusion_conv(torch.cat([l_pre_feats[-1], g_pre_up], dim=1))
         post_fused = self.fusion_conv(torch.cat([l_post_feats[-1], g_post_up], dim=1))
 
-        B, C, H, W = pre_fused.shape
+        # Replaced MultiheadAttention with the dedicated difference-tensor attention
+        attn_out = self.co_attention(pre_fused, post_fused)
 
-        pre_flat = pre_fused.view(B, C, -1).permute(0, 2, 1)
-        post_flat = post_fused.view(B, C, -1).permute(0, 2, 1)
-
-        attn_out, _ = self.co_attention(post_flat, pre_flat, pre_flat)
-
-        x = attn_out.permute(0, 2, 1).view(B, C, H, W) + post_fused
+        x = 0.5 * attn_out + post_fused
 
         skip1 = self.skip1_reduce(torch.cat([l_pre_feats[-2], l_post_feats[-2]], dim=1))
         skip2 = self.skip2_reduce(torch.cat([l_pre_feats[-3], l_post_feats[-3]], dim=1))
@@ -125,8 +127,6 @@ class GLCrossNet(nn.Module):
         up = self.final_up(x)
 
         mask_out = self.mask_head(up)
-
-        # FIX: keep shape [B,1,H,W]
         edge_out = self.edge_head(up)
 
         mask_out = F.interpolate(mask_out, size=pre.shape[-2:], mode='bilinear', align_corners=False)

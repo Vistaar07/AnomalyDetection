@@ -3,79 +3,66 @@ import torch.nn as nn
 import torch.nn.functional as F
 import config
 
-class BoundaryAwareOrdinalFocalLoss(nn.Module):
-    def __init__(self, gamma=2.5, label_smoothing=0.1):
+class BoundaryAwareTailWeightedLoss(nn.Module):
+    def __init__(self, gamma=2.0):
         super().__init__()
         self.gamma = gamma
-        self.label_smoothing = label_smoothing
-        self.bce = nn.BCEWithLogitsLoss()
-
-        # Register class weights so they automatically map to the GPU
+        self.bce   = nn.BCEWithLogitsLoss()
         self.register_buffer('class_weights', torch.tensor(config.CLASS_WEIGHTS, dtype=torch.float32))
 
+        # label_smoothing has been removed.
+        # When combined with focal loss, label_smoothing distorts the per-sample
+        # probability estimate (pt = exp(-ce)) that the focal term depends on.
+        # Smoothing artificially raises ce even for confident correct predictions,
+        # which inflates (1-pt)^gamma and over-penalises easy examples — the
+        # opposite of what focal loss is designed to do.
+        # Use one or the other; here focal loss is the primary mechanism for
+        # handling class imbalance, so label_smoothing is dropped.
+
     def dice_loss(self, pred, target):
-        # CHANGED: 1e-6 will underflow in FP16. 1.0 guarantees no division by zero.
-        smooth = 1.0
+        smooth     = 1.0
+        pred       = F.softmax(pred, dim=1)
+        target_one_hot = (
+            F.one_hot(target, num_classes=config.NUM_CLASSES)
+            .permute(0, 3, 1, 2)
+            .float()
+        )
 
-        pred = F.softmax(pred, dim=1)
-        target_one_hot = F.one_hot(
-            target, num_classes=config.NUM_CLASSES
-        ).permute(0, 3, 1, 2).float()
-
-        intersection = (pred * target_one_hot).sum(dim=(2, 3))
-        union = pred.sum(dim=(2, 3)) + target_one_hot.sum(dim=(2, 3))
-
-        dice = (2. * intersection + smooth) / (union + smooth)
+        intersection   = (pred * target_one_hot).sum(dim=(2, 3))
+        union          = pred.sum(dim=(2, 3)) + target_one_hot.sum(dim=(2, 3))
+        dice           = (2. * intersection + smooth) / (union + smooth)
 
         dice_per_class = dice.mean(dim=0)
-        weights = self.class_weights / self.class_weights.sum()
+        weights        = self.class_weights / self.class_weights.sum()
 
         return 1 - (dice_per_class * weights).sum()
 
     def forward(self, pred_masks, true_masks, pred_edges, true_edges):
-        # --- NEW: Force FP32 for numerical stability in the loss function ---
         pred_masks = pred_masks.float()
         pred_edges = pred_edges.float()
-        # -------------------------------------------------------------------
 
         # 1. FOCAL LOSS
-        ce_loss = F.cross_entropy(
+        # Standard weighted cross-entropy (no label_smoothing) so that pt is a
+        # true probability estimate and the focal modulation is mathematically correct.
+        ce_loss    = F.cross_entropy(
             pred_masks,
             true_masks,
             weight=self.class_weights,
-            reduction='none',
-            label_smoothing=self.label_smoothing
+            reduction='none'
         )
-        pt = torch.exp(-ce_loss)
+        pt         = torch.exp(-ce_loss)
         focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
 
-        # 2. MULTI-CLASS DICE LOSS
+        # 2. MULTI-CLASS WEIGHTED DICE LOSS
         dice = self.dice_loss(pred_masks, true_masks)
 
-        # 3. ORDINAL LOSS
-        num_classes = pred_masks.shape[1]
-        probs = torch.softmax(pred_masks, dim=1)
-        class_ids = torch.arange(num_classes, device=pred_masks.device).view(1, -1, 1, 1)
-        pred_expected = (probs * class_ids).sum(dim=1)
-
-        true_classes = true_masks.float()
-        mask_fg = true_classes > 0
-
-        if mask_fg.sum() > 0:
-            ordinal_loss = F.l1_loss(pred_expected[mask_fg], true_classes[mask_fg])
-        else:
-            ordinal_loss = torch.tensor(0.0, device=pred_masks.device)
-
-        # 4. BOUNDARY LOSS
+        # 3. BOUNDARY LOSS
         true_edges = true_edges.unsqueeze(1).float()
-        pred_edges = pred_edges.float()
-        edge_loss = self.bce(pred_edges, true_edges)
+        edge_loss  = self.bce(pred_edges, true_edges)
 
-        # TOTAL COMBINED LOSS
         total_loss = (
-                config.LAMBDA_FOCAL * focal_loss
-                + config.LAMBDA_DICE * dice
-                + config.LAMBDA_ORDINAL * ordinal_loss
+                config.LAMBDA_FOCAL    * focal_loss
+                + config.LAMBDA_DICE   * dice
                 + config.LAMBDA_BOUNDARY * edge_loss
         )
 

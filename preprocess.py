@@ -46,7 +46,7 @@ def create_masks(json_path, img_shape=(1024, 1024)):
         # round properly (not truncate)
         coords = np.round(coords).astype(np.int32)
 
-        # clip to image bounds (CRITICAL)
+        # clip to image bounds
         coords[:, 0] = np.clip(coords[:, 0], 0, img_shape[1] - 1)
         coords[:, 1] = np.clip(coords[:, 1], 0, img_shape[0] - 1)
 
@@ -91,7 +91,6 @@ def process_directory(raw_dir, processed_dir, is_train=True):
         cv2.imwrite(os.path.join(processed_dir, f"{base_name}_global_pre.png"), global_pre)
         cv2.imwrite(os.path.join(processed_dir, f"{base_name}_global_post.png"), global_post)
 
-        # Crop into 256x256 Tiles
         stride = config.TILE_SIZE
         for y in range(0, 1024, stride):
             for x in range(0, 1024, stride):

@@ -10,16 +10,20 @@ class CrossTemporalAttention(nn.Module):
         self.key = nn.Conv2d(channels, channels // 8, 1)
         self.value = nn.Conv2d(channels, channels, 1)
         self.gamma = nn.Parameter(torch.zeros(1))
+        # Standard attention scaling factor
+        self.scale = (channels // 8) ** -0.5
 
     def forward(self, pre_feat, post_feat):
         B, C, H, W = pre_feat.size()
 
-        # INJECTION: Isolate the structural changes
+        # Isolate the structural change
         diff = torch.abs(pre_feat - post_feat)
 
-        # Query uses the difference tensor to focus attention
         proj_query = self.query(diff).view(B, -1, H * W).permute(0, 2, 1)
         proj_key = self.key(pre_feat).view(B, -1, H * W)
+
+        # Apply scaling to stabilize gradients.
+        proj_query = proj_query * self.scale
 
         energy = torch.bmm(proj_query, proj_key)
         attention = F.softmax(energy, dim=-1)
@@ -52,14 +56,12 @@ class GLCrossNet(nn.Module):
     def __init__(self, num_classes=5):
         super().__init__()
 
-        # Gradient checkpointing must be enabled via set_grad_checkpointing()
-        # after model creation — passing it as a kwarg to create_model is not
-        # supported in all timm versions and causes a TypeError.
+
         self.local_encoder = timm.create_model(
-            'convnext_tiny', pretrained=True, features_only=True
+            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512
         )
         self.global_encoder = timm.create_model(
-            'convnext_tiny', pretrained=True, features_only=True
+            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512
         )
         self.local_encoder.set_grad_checkpointing(enable=True)
         self.global_encoder.set_grad_checkpointing(enable=True)
@@ -95,11 +97,13 @@ class GLCrossNet(nn.Module):
         )
 
     def forward(self, pre, post, g_pre, g_post):
-        l_pre_feats = self.local_encoder(pre)
-        l_post_feats = self.local_encoder(post)
+        # Swin natively outputs [B, H, W, C].
+        # Permute to PyTorch's standard [B, C, H, W] for the decoder.
+        l_pre_feats = [f.permute(0, 3, 1, 2) for f in self.local_encoder(pre)]
+        l_post_feats = [f.permute(0, 3, 1, 2) for f in self.local_encoder(post)]
 
-        g_pre_feats = self.global_encoder(g_pre)[-1]
-        g_post_feats = self.global_encoder(g_post)[-1]
+        g_pre_feats = self.global_encoder(g_pre)[-1].permute(0, 3, 1, 2)
+        g_post_feats = self.global_encoder(g_post)[-1].permute(0, 3, 1, 2)
 
         g_pre_up = F.interpolate(
             g_pre_feats, size=l_pre_feats[-1].shape[-2:], mode='bilinear', align_corners=False

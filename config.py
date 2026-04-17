@@ -15,19 +15,18 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters
 BATCH_SIZE = 16
-EPOCHS = 100
+EPOCHS = 120          # Extended: cosine schedule spans full budget, no early collapse
 LEARNING_RATE = 5e-5
 TILE_SIZE = 512
-NUM_CLASSES = 5 # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
+NUM_CLASSES = 5       # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
 # [Background, No-Damage, Minor, Major, Destroyed]
-# Heavy penalty for missing the tail classes (Minor, Destroyed)
-CLASS_WEIGHTS = [0.1, 1.0, 8.0, 3.0, 6.0]
+CLASS_WEIGHTS = [0.1, 1.0, 10.0, 3.5, 5.0]
 
 # Loss Weights
 LAMBDA_FOCAL = 2.0
-LAMBDA_DICE = 1.0
-LAMBDA_BOUNDARY = 0.75
+LAMBDA_DICE = 1.5     # Increased: Dice directly optimises per-class overlap
+LAMBDA_BOUNDARY = 0.5 # Reduced: boundary supervision less critical than getting damage classification right
 
 # CutMix Probability
 CUTMIX_PROB = 0.5

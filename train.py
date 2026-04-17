@@ -9,9 +9,10 @@ from model import GLCrossNet
 from loss import BoundaryAwareTailWeightedLoss
 import numpy as np
 from torch.amp import autocast, GradScaler
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from evaluate import calculate_xview2_metrics
 from datetime import datetime
+
 
 def rand_bbox(size, lam):
     W, H = size[2], size[3]
@@ -52,9 +53,20 @@ def train():
 
     model     = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
     criterion = BoundaryAwareTailWeightedLoss().to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE)
-    scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
-    scaler    = GradScaler('cuda')
+
+    # Single optimizer group — no layerwise LR.
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config.LEARNING_RATE,
+        weight_decay=1e-4
+    )
+
+    # Cosine annealing over the main training phase (warmup to freeze epoch).
+    # T_0=46 = FREEZE_EPOCH(50) - WARMUP_EPOCHS(4).
+    scheduler = CosineAnnealingWarmRestarts(
+        optimizer, T_0=46, T_mult=1, eta_min=1e-6
+    )
+    scaler = GradScaler('cuda')
 
     run_id       = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"training_log_{run_id}.csv"
@@ -71,8 +83,8 @@ def train():
     best_score  = -1.0
     history     = []
 
-    checkpoint_path  = os.path.join(config.CHECKPOINT_DIR, f'latest_checkpoint_{run_id}.pth')
-    best_model_path  = os.path.join(config.CHECKPOINT_DIR, f'best_model_{run_id}.pth')
+    checkpoint_path = os.path.join(config.CHECKPOINT_DIR, f'latest_checkpoint_{run_id}.pth')
+    best_model_path = os.path.join(config.CHECKPOINT_DIR, f'best_model_{run_id}.pth')
 
     if os.path.exists(checkpoint_path):
         print("Checkpoint found! Resuming...")
@@ -82,29 +94,20 @@ def train():
         start_epoch = checkpoint['epoch'] + 1
         best_score  = checkpoint.get('best_score', -1.0)
 
-    WARMUP_EPOCHS          = 4
-    FREEZE_EPOCH           = 50
+    WARMUP_EPOCHS           = 4
+    FREEZE_EPOCH            = 50
     EARLY_STOPPING_PATIENCE = 20
     epochs_without_improvement = 0
 
     for epoch in range(start_epoch, config.EPOCHS):
 
-        # HEAD DECOUPLING: Freeze encoders at epoch 50 to force damage head convergence.
+        # Soft LR reduction at epoch 50 for fine-tuning phase.
         if epoch == FREEZE_EPOCH:
-            print("\n>>> FREEZING ENCODERS: Transitioning to Damage Head Fine-Tuning <<<")
-            for param in model.local_encoder.parameters():
-                param.requires_grad = False
-            for param in model.global_encoder.parameters():
-                param.requires_grad = False
+            print("\n>>> LR REDUCTION: Transitioning to fine-tuning phase <<<")
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = config.LEARNING_RATE * 0.05
 
-            # Reset optimizer so frozen param momentum doesn't carry over.
-            optimizer = torch.optim.AdamW(
-                filter(lambda p: p.requires_grad, model.parameters()),
-                lr=config.LEARNING_RATE
-            )
-            scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
-
-        # Linear LR warmup.
+        # Linear warmup for first 4 epochs, then cosine takes over.
         if epoch < WARMUP_EPOCHS:
             warmup_lr = config.LEARNING_RATE * (epoch + 1) / WARMUP_EPOCHS
             for param_group in optimizer.param_groups:
@@ -138,12 +141,21 @@ def train():
                 loss = criterion(mask_out, mask, edge_out, edge)
 
             scaler.scale(loss).backward()
+
+            # Unscale before clipping so gradients are in their true magnitude
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+            # scaler.step() natively checks for NaNs. If found, it skips the step automatically.
             scaler.step(optimizer)
+
+            # scaler.update() adjusts the scale factor properly based on if the step was skipped.
             scaler.update()
 
-            train_loss += loss.item()
+            # Safely add the loss for logging, skipping if it exploded this iteration
+            if not torch.isnan(loss) and not torch.isinf(loss):
+                train_loss += loss.item()
+
             pbar.set_postfix(loss=loss.item())
 
         avg_train_loss = train_loss / len(train_loader)
@@ -186,8 +198,9 @@ def train():
 
         f1_loc, f1_dmg_classes, f1_dmg_harmonic, xview2_score = calculate_xview2_metrics(global_cm)
 
-        if epoch >= WARMUP_EPOCHS:
-            scheduler.step(xview2_score)
+        # Cosine scheduler steps every epoch between warmup and freeze.
+        if epoch >= WARMUP_EPOCHS and epoch < FREEZE_EPOCH:
+            scheduler.step(epoch - WARMUP_EPOCHS)
 
         current_lr = optimizer.param_groups[0]['lr']
 

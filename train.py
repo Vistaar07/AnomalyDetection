@@ -58,7 +58,7 @@ def train():
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.LEARNING_RATE,
-        weight_decay=1e-4
+        weight_decay=5e-2
     )
 
     # Cosine annealing over the main training phase (warmup to freeze epoch).
@@ -125,7 +125,7 @@ def train():
 
             # CutMix: valid on normalized tensors since it only swaps spatial regions.
             if config.CUTMIX_PROB > 0 and np.random.rand() < config.CUTMIX_PROB:
-                lam        = np.random.beta(1.0, 1.0)
+                lam        = np.random.beta(0.5, 0.5)
                 rand_index = torch.randperm(pre.size(0)).to(device)
                 bbx1, bby1, bbx2, bby2 = rand_bbox(pre.size(), lam)
 

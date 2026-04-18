@@ -58,10 +58,10 @@ class GLCrossNet(nn.Module):
 
 
         self.local_encoder = timm.create_model(
-            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512
+            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512, drop_path_rate=0.2
         )
         self.global_encoder = timm.create_model(
-            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512
+            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512, drop_path_rate=0.2
         )
         self.local_encoder.set_grad_checkpointing(enable=True)
         self.global_encoder.set_grad_checkpointing(enable=True)

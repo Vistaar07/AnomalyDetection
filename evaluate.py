@@ -83,7 +83,7 @@ def evaluate():
 
     model = GLCrossNet(num_classes=config.NUM_CLASSES).to(device)
 
-    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_20260415_131313.pth')
+    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_20260417_174915.pth')
     model.load_state_dict(torch.load(ckpt_path, map_location=device))
     model.eval()
 

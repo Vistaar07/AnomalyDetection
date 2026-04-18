@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import config
 
 class BoundaryAwareTailWeightedLoss(nn.Module):
-    def __init__(self, gamma=2.0):
+    def __init__(self, gamma=1.5):
         super().__init__()
         self.gamma = gamma
         self.bce   = nn.BCEWithLogitsLoss()
@@ -91,7 +91,7 @@ class BoundaryAwareTailWeightedLoss(nn.Module):
                 config.LAMBDA_FOCAL      * focal_loss
                 + config.LAMBDA_DICE     * dice
                 + config.LAMBDA_BOUNDARY * edge_loss
-                + 0.5                    * emd
+                + 0.7                    * emd
         )
 
         return total_loss

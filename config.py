@@ -21,7 +21,7 @@ TILE_SIZE = 512
 NUM_CLASSES = 5       # 0: Background, 1: No Damage, 2: Minor, 3: Major, 4: Destroyed
 
 # [Background, No-Damage, Minor, Major, Destroyed]
-CLASS_WEIGHTS = [0.1, 1.0, 10.0, 3.5, 5.0]
+CLASS_WEIGHTS = [0.2, 1.0, 3.5, 2.5, 4.0]
 
 # Loss Weights
 LAMBDA_FOCAL = 2.0

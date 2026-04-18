@@ -10,19 +10,16 @@ class CrossTemporalAttention(nn.Module):
         self.key = nn.Conv2d(channels, channels // 8, 1)
         self.value = nn.Conv2d(channels, channels, 1)
         self.gamma = nn.Parameter(torch.zeros(1))
-        # Standard attention scaling factor
         self.scale = (channels // 8) ** -0.5
 
     def forward(self, pre_feat, post_feat):
         B, C, H, W = pre_feat.size()
 
-        # Isolate the structural change
         diff = torch.abs(pre_feat - post_feat)
 
         proj_query = self.query(diff).view(B, -1, H * W).permute(0, 2, 1)
         proj_key = self.key(pre_feat).view(B, -1, H * W)
 
-        # Apply scaling to stabilize gradients.
         proj_query = proj_query * self.scale
 
         energy = torch.bmm(proj_query, proj_key)
@@ -53,16 +50,22 @@ class DecoderBlock(nn.Module):
 
 
 class GLCrossNet(nn.Module):
-    def __init__(self, num_classes=5):
+    def __init__(self, backbone='swin_tiny_patch4_window7_224', num_classes=5):
         super().__init__()
 
+        # Safely handle Transformer-specific requirements
+        encoder_kwargs = {'pretrained': True, 'features_only': True}
+        if 'swin' in backbone:
+            encoder_kwargs['img_size'] = 512
 
+        # DYNAMICALLY LOAD THE BACKBONE
         self.local_encoder = timm.create_model(
-            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512, drop_path_rate=0.2
+            backbone, **encoder_kwargs
         )
         self.global_encoder = timm.create_model(
-            'swin_tiny_patch4_window7_224', pretrained=True, features_only=True, img_size=512, drop_path_rate=0.2
+            backbone, **encoder_kwargs
         )
+
         self.local_encoder.set_grad_checkpointing(enable=True)
         self.global_encoder.set_grad_checkpointing(enable=True)
 
@@ -71,7 +74,6 @@ class GLCrossNet(nn.Module):
         self.norm = nn.LayerNorm(ch[-1])
         self.fusion_conv = nn.Conv2d(ch[-1] * 2, ch[-1], 1)
 
-        # CrossTemporalAttention replacing the generic MultiheadAttention
         self.co_attention = CrossTemporalAttention(channels=ch[-1])
 
         self.skip1_reduce = nn.Conv2d(ch[-2] * 2, ch[-2], 1)
@@ -96,14 +98,27 @@ class GLCrossNet(nn.Module):
             nn.Conv2d(ch[-4], 1, 1)
         )
 
-    def forward(self, pre, post, g_pre, g_post):
-        # Swin natively outputs [B, H, W, C].
-        # Permute to PyTorch's standard [B, C, H, W] for the decoder.
-        l_pre_feats = [f.permute(0, 3, 1, 2) for f in self.local_encoder(pre)]
-        l_post_feats = [f.permute(0, 3, 1, 2) for f in self.local_encoder(post)]
+    # NEW HELPER TO HANDLE CNN vs TRANSFORMER SHAPES
+    def extract_features(self, encoder, x):
+        feats = encoder(x)
+        expected_channels = self.local_encoder.feature_info.channels()
 
-        g_pre_feats = self.global_encoder(g_pre)[-1].permute(0, 3, 1, 2)
-        g_post_feats = self.global_encoder(g_post)[-1].permute(0, 3, 1, 2)
+        processed_feats = []
+        for i, f in enumerate(feats):
+            # If the last dimension matches the channel count, it's NHWC (Swin)
+            if f.shape[-1] == expected_channels[i]:
+                processed_feats.append(f.permute(0, 3, 1, 2))
+            else:
+                processed_feats.append(f)
+        return processed_feats
+
+    def forward(self, pre, post, g_pre, g_post):
+        # USE THE EXTRACTOR INSTEAD OF HARDCODED PERMUTES
+        l_pre_feats = self.extract_features(self.local_encoder, pre)
+        l_post_feats = self.extract_features(self.local_encoder, post)
+
+        g_pre_feats = self.extract_features(self.global_encoder, g_pre)[-1]
+        g_post_feats = self.extract_features(self.global_encoder, g_post)[-1]
 
         g_pre_up = F.interpolate(
             g_pre_feats, size=l_pre_feats[-1].shape[-2:], mode='bilinear', align_corners=False
@@ -115,7 +130,6 @@ class GLCrossNet(nn.Module):
         pre_fused = self.fusion_conv(torch.cat([l_pre_feats[-1], g_pre_up], dim=1))
         post_fused = self.fusion_conv(torch.cat([l_post_feats[-1], g_post_up], dim=1))
 
-        # Replaced MultiheadAttention with the dedicated difference-tensor attention
         attn_out = self.co_attention(pre_fused, post_fused)
 
         x = 0.5 * attn_out + post_fused

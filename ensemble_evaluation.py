@@ -8,6 +8,10 @@ from dataset import xBDDataset
 from model import GLCrossNet
 from torch.amp import autocast
 
+# --- ENSEMBLE WEIGHTS ---
+CONV_WEIGHT = 0.30
+SWIN_WEIGHT = 0.70
+
 def calculate_xview2_metrics(confusion_matrix):
     tp_loc = np.sum(confusion_matrix[1:, 1:])
     fp_loc = np.sum(confusion_matrix[0, 1:])
@@ -34,9 +38,6 @@ def calculate_xview2_metrics(confusion_matrix):
 def tta_predict(model, pre, post, g_pre, g_post):
     """
     Test-Time Augmentation: average predictions over 4 flip variants.
-
-    Variants: original, H-flip, V-flip, HV-flip.
-    Masks are flipped back before averaging so they align in original space.
     """
     with autocast('cuda'):
         # Original
@@ -74,30 +75,45 @@ def tta_predict(model, pre, post, g_pre, g_post):
     return avg_out
 
 
-def evaluate():
+def evaluate_ensemble():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     dataset = xBDDataset(config.PROCESSED_TEST_DIR, is_train=False)
     loader  = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False,
                          num_workers=4, pin_memory=True)
 
-    model = GLCrossNet(backbone='pvt_v2_b2', num_classes=config.NUM_CLASSES).to(device)
+    # 1. INITIALIZE & LOAD CONVNEXT
+    print("Loading ConvNeXt-Tiny Model...")
+    model_conv = GLCrossNet(backbone='convnext_tiny', num_classes=config.NUM_CLASSES).to(device)
+    conv_ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_20260415_131313.pth')
+    model_conv.load_state_dict(torch.load(conv_ckpt_path, map_location=device))
+    model_conv.eval()
 
-    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_pvt_v2_b2_20260418_155244.pth')
-    model.load_state_dict(torch.load(ckpt_path, map_location=device))
-    model.eval()
+    # 2. INITIALIZE & LOAD SWIN
+    print("Loading Swin-Tiny Model...")
+    model_swin = GLCrossNet(backbone='swin_tiny_patch4_window7_224', num_classes=config.NUM_CLASSES).to(device)
+    swin_ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_20260417_174915.pth')
+    model_swin.load_state_dict(torch.load(swin_ckpt_path, map_location=device))
+    model_swin.eval()
 
     global_cm = np.zeros((config.NUM_CLASSES, config.NUM_CLASSES), dtype=np.int64)
 
-    print("Evaluating Model on Test Data (with TTA)...")
+    print("Evaluating Ensemble on Test Data (with TTA)...")
     with torch.no_grad():
         for batch in tqdm(loader):
             pre,   post   = batch['pre'].to(device),   batch['post'].to(device)
             g_pre, g_post = batch['g_pre'].to(device), batch['g_post'].to(device)
             mask          = batch['mask'].cpu().numpy()
 
-            mask_out = tta_predict(model, pre, post, g_pre, g_post)
-            preds    = torch.argmax(mask_out, dim=1).cpu().numpy()
+            # Get TTA logits from both models
+            logits_conv = tta_predict(model_conv, pre, post, g_pre, g_post)
+            logits_swin = tta_predict(model_swin, pre, post, g_pre, g_post)
+
+            # Weighted Logit Ensemble
+            ensemble_logits = (CONV_WEIGHT * logits_conv) + (SWIN_WEIGHT * logits_swin)
+
+            # Extract final predictions
+            preds = torch.argmax(ensemble_logits, dim=1).cpu().numpy()
 
             flattened_true  = mask.flatten()
             flattened_preds = preds.flatten()
@@ -111,16 +127,17 @@ def evaluate():
 
     f1_loc, f1_dmg_classes, f1_dmg_harmonic, xview2_score = calculate_xview2_metrics(global_cm)
 
-    print("\n--- Evaluation Results (with TTA) ---")
+    print("\n--- Ensemble Evaluation Results (ConvNeXt + Swin) ---")
+    print(f"Ensemble Weights:       Conv={CONV_WEIGHT:.2f} | Swin={SWIN_WEIGHT:.2f}")
     print(f"Localization F1:        {f1_loc:.4f}")
     print(f"No Damage F1:           {f1_dmg_classes[0]:.4f}")
     print(f"Minor Damage F1:        {f1_dmg_classes[1]:.4f}")
     print(f"Major Damage F1:        {f1_dmg_classes[2]:.4f}")
     print(f"Destroyed F1:           {f1_dmg_classes[3]:.4f}")
     print(f"Damage F1 (Harmonic):   {f1_dmg_harmonic:.4f}")
-    print(f"-------------------------------------")
+    print(f"-------------------------------------------------------")
     print(f"Overall xView2 Score:   {xview2_score:.4f}")
 
 
 if __name__ == '__main__':
-    evaluate()
+    evaluate_ensemble()

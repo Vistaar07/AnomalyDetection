@@ -24,6 +24,7 @@ class xBDDataset(Dataset):
         self.transform = A.Compose([
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),   # Satellite imagery has no canonical orientation
             A.Rotate(limit=30, p=0.5),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.5),
             A.Normalize(mean=(0.485, 0.456, 0.406),

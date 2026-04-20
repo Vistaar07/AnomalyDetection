@@ -91,7 +91,7 @@ class BoundaryAwareTailWeightedLoss(nn.Module):
                 config.LAMBDA_FOCAL      * focal_loss
                 + config.LAMBDA_DICE     * dice
                 + config.LAMBDA_BOUNDARY * edge_loss
-                + 0.7                    * emd
+                + config.LAMBDA_EMD      * emd
         )
 
         return total_loss

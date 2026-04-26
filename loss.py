@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import config
 
 class BoundaryAwareTailWeightedLoss(nn.Module):
-    def __init__(self, gamma=1.5):
+    def __init__(self, gamma=2.5):
         super().__init__()
         self.gamma = gamma
         self.bce   = nn.BCEWithLogitsLoss()
@@ -32,13 +32,9 @@ class BoundaryAwareTailWeightedLoss(nn.Module):
         return 1 - (dice_per_class * weights).sum()
 
     def ordinal_emd_loss(self, pred, target):
-        # Force float32 — AMP runs this in float16 by default, and softmax
-        # outputs near zero in float16 cause cumsum to produce NaN/inf gradients
-        # which explode the model. float32 cast here is the fix.
         pred = pred.float()
 
         probs = F.softmax(pred, dim=1)
-        # Clamp to prevent log-of-zero in any downstream ops and stabilise cumsum
         probs = torch.clamp(probs, min=1e-6, max=1.0)
         C = probs.shape[1]
 
@@ -51,7 +47,16 @@ class BoundaryAwareTailWeightedLoss(nn.Module):
         pred_cdf   = torch.cumsum(probs, dim=1)
         target_cdf = torch.cumsum(target_one_hot, dim=1)
 
-        return torch.mean(torch.abs(pred_cdf - target_cdf))
+        # Calculate raw EMD per pixel (mean across the class dimension)
+        pixel_emd = torch.mean(torch.abs(pred_cdf - target_cdf), dim=1)
+
+        # CHANGED: Asymmetric Ordinal Penalty
+        # If the ground truth is Minor Damage (Class 2), multiply the EMD penalty by 2.5.
+        # This actively fights the network's urge to lazily predict Class 1 (No Damage).
+        minor_mask = (target == 2).float()
+        penalty_weights = 1.0 + (minor_mask * 1.5)
+
+        return torch.mean(pixel_emd * penalty_weights)
 
     def forward(self, pred_masks, true_masks, pred_edges, true_edges):
         pred_masks = pred_masks.float()

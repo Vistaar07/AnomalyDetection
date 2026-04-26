@@ -81,9 +81,9 @@ def evaluate():
     loader  = DataLoader(dataset, batch_size=config.BATCH_SIZE, shuffle=False,
                          num_workers=4, pin_memory=True)
 
-    model = GLCrossNet(backbone='pvt_v2_b2', num_classes=config.NUM_CLASSES).to(device)
+    model = GLCrossNet(backbone='hrnet_w32', num_classes=config.NUM_CLASSES).to(device)
 
-    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_pvt_v2_b2_20260418_155244.pth')
+    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_model_hrnet_w32_20260421_105211.pth')
     model.load_state_dict(torch.load(ckpt_path, map_location=device))
     model.eval()
 

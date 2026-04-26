@@ -14,7 +14,7 @@ os.makedirs(PROCESSED_TEST_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Hyperparameters
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 EPOCHS = 120          # Extended: cosine schedule spans full budget, no early collapse
 LEARNING_RATE = 1e-4  # changed from 5e-5 to 1e-4 for segformer
 TILE_SIZE = 512
@@ -30,4 +30,4 @@ LAMBDA_BOUNDARY = 0.5
 LAMBDA_EMD = 1.2
 
 # CutMix Probability
-CUTMIX_PROB = 0.5
+CUTMIX_PROB = 0.15

@@ -73,8 +73,8 @@ class GLCrossNet(nn.Module):
             self.local_encoder  = timm.create_model(backbone, **encoder_kwargs)
             self.global_encoder = timm.create_model(backbone, **encoder_kwargs)
 
-            self.local_encoder.set_grad_checkpointing(enable=True)
-            self.global_encoder.set_grad_checkpointing(enable=True)
+            # self.local_encoder.set_grad_checkpointing(enable=True)
+            # self.global_encoder.set_grad_checkpointing(enable=True)
 
             ch = self.local_encoder.feature_info.channels()
 

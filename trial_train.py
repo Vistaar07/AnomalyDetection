@@ -34,7 +34,7 @@ def rand_bbox(size, lam):
 
 def trial_train():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Training efficientvit_b2 on device: {device}")
+    print(f"Training hrnet_w32 on device: {device}")
 
     train_dataset = xBDDataset(config.PROCESSED_TRAIN_DIR, is_train=True)
     val_dataset   = xBDDataset(config.PROCESSED_TEST_DIR,  is_train=False)
@@ -56,7 +56,7 @@ def trial_train():
         persistent_workers=False,
     )
 
-    model     = GLCrossNet(backbone='efficientvit_b2', num_classes=config.NUM_CLASSES).to(device)
+    model     = GLCrossNet(backbone='hrnet_w32', num_classes=config.NUM_CLASSES).to(device)
     criterion = BoundaryAwareTailWeightedLoss().to(device)
 
 
@@ -72,10 +72,10 @@ def trial_train():
     scaler = GradScaler('cuda')
 
     run_id       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"training_log_efficientvit_b2_{run_id}.csv"
+    log_filename = f"training_log_hrnet_w32_{run_id}.csv"
     hp_header = (
-        f"# RUN ID: efficientvit_b2{run_id}\n"
-        f"# BACKBONE: efficientvit_b2\n"
+        f"# RUN ID: hrnet_w32{run_id}\n"
+        f"# BACKBONE: hrnet_w32\n"
         f"# CLASS_WEIGHTS: {config.CLASS_WEIGHTS}\n"
         f"# LAMBDA_EMD: {config.LAMBDA_EMD}\n"
         f"# BATCH_SIZE: {config.BATCH_SIZE}\n"
@@ -88,8 +88,8 @@ def trial_train():
     best_score  = -1.0
     history     = []
 
-    checkpoint_path = os.path.join(config.CHECKPOINT_DIR, f'latest_checkpoint_efficientvit_b2_{run_id}.pth')
-    best_model_path = os.path.join(config.CHECKPOINT_DIR, f'best_model_efficientvit_b2_{run_id}.pth')
+    checkpoint_path = os.path.join(config.CHECKPOINT_DIR, f'latest_checkpoint_hrnet_w32_{run_id}.pth')
+    best_model_path = os.path.join(config.CHECKPOINT_DIR, f'best_model_hrnet_w32_{run_id}.pth')
 
     if os.path.exists(checkpoint_path):
         print("Checkpoint found! Resuming...")
